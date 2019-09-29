@@ -24,6 +24,7 @@ map<SOCKET, USER_INFO*> g_mapUser;
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ProcessSocketMessage(HWND, UINT, WPARAM, LPARAM);
 bool ProcessPacket(SOCKET sock , USER_INFO* pUser, char* szBuf, int& len);
+
 void err_display(int errcode);
 void err_display(char* szMsg);
 
@@ -132,7 +133,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	switch (WSAGETSELECTEVENT(lParam))
 	{
-	case FD_ACCEPT:
+	case FD_ACCEPT: 
 	{
 		addrlen = sizeof(clientaddr);
 		client_sock = accept(wParam, (SOCKADDR*)&clientaddr, &addrlen);

@@ -22,6 +22,11 @@ struct USER_DATA
 	WORD wY;
 };
 
+struct CARD_DATA
+{
+
+};
+
 struct PACKET_LOGIN_RET
 {
 	PACKET_HEADER header;
@@ -32,13 +37,18 @@ struct PACKET_USER_DATA
 {
 	PACKET_HEADER header;
 	WORD wCount;
-	USER_DATA data[20];
+	USER_DATA data[20]; 
 };
 
 struct PACKET_SEND_POS
 {
 	PACKET_HEADER header;
 	USER_DATA data;
+};
+
+struct PACKET_SEND_CARDINFO
+{
+
 };
 
 
