@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <iostream>
 #include <map>
+#include <list>
 #include "..\..\Common\PACKET_HEADER.h"
 using namespace std;
 
@@ -16,10 +17,27 @@ public:
 	int len;
 	int x;
 	int y;
+	int ranarr[20];
 };
 
 int g_iIndex = 0;
 map<SOCKET, USER_INFO*> g_mapUser;
+
+class CARD_INFO
+{
+public:
+	int m_targetUserIndex; //어느 유저한테 뿌릴건지
+	int m_randomCardArray[20]; //카드 셔플용 배열
+	int len; //길이
+};
+
+class LOBBY
+{
+public:
+	list<USER_INFO*> m_UserList;
+};
+
+
 
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ProcessSocketMessage(HWND, UINT, WPARAM, LPARAM);
@@ -123,6 +141,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	int addrlen = 0;
 	int retval = 0;
 
+	srand(GetTickCount());
 
 	if (WSAGETSELECTERROR(lParam))
 	{
@@ -133,7 +152,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 	switch (WSAGETSELECTEVENT(lParam))
 	{
-	case FD_ACCEPT: 
+	case FD_ACCEPT: //클라가 접속할때
 	{
 		addrlen = sizeof(clientaddr);
 		client_sock = accept(wParam, (SOCKADDR*)&clientaddr, &addrlen);
@@ -154,12 +173,32 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			cout << "err on WSAAsyncSelect!!" << endl;
 		}
 
+		//유저인포를 만들어준다
 		USER_INFO* pInfo = new USER_INFO();
-		pInfo->index = g_iIndex++;
-		pInfo->len = 0;
-		pInfo->x = rand() % 600;
-		pInfo->y = rand() % 400;
-		g_mapUser.insert(make_pair(client_sock , pInfo));
+		pInfo->index = g_iIndex++; //유저 번호
+		pInfo->len = 0;				// 길이?
+		pInfo->x = rand() % 600;	//X위치
+		pInfo->y = rand() % 400;    //Y위치
+
+		for (int i = 0; i < 20; i++)
+			pInfo->ranarr[i] = i % 10;
+
+		for (int i = 0; i < 100; i++)
+		{
+			int randA = rand() % 20;
+			int randB = rand() % 20;
+
+			int iTemp = pInfo->ranarr[randA];
+			pInfo->ranarr[randA] = pInfo->ranarr[randB];
+			pInfo->ranarr[randB] = iTemp;
+		}
+
+		g_mapUser.insert(make_pair(client_sock , pInfo)); // 유저 추가
+		
+		for (int i = 0; i < 20; i++)
+		cout<<pInfo->ranarr[i]<<" ";
+
+		cout << endl;
 
 		PACKET_LOGIN_RET packet;
 		packet.header.wIndex = PACKET_INDEX_LOGIN_RET;
@@ -171,7 +210,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 		PACKET_USER_DATA user_packet;
 		user_packet.header.wIndex = PACKET_INDEX_USER_DATA;
-		user_packet.header.wLen = sizeof(PACKET_HEADER) + sizeof(WORD) + sizeof(USER_DATA) * g_mapUser.size();
+		user_packet.header.wLen = sizeof(PACKET_HEADER) + sizeof(WORD) + sizeof(INT) + sizeof(USER_DATA) * g_mapUser.size();
 		user_packet.wCount = g_mapUser.size();
 		int i = 0;
 		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++ , i++)
@@ -179,12 +218,42 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			user_packet.data[i].iIndex = iter->second->index;
 			user_packet.data[i].wX = iter->second->x;
 			user_packet.data[i].wY = iter->second->y;
+			for (int j = 0; j < 20; j++)
+			{
+				user_packet.data[i].wArr[j] = iter->second->ranarr[j];
+			//	cout << user_packet.data[i].wArr[j] << " ";
+			}
 		}
 
 		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++, i++)
 		{
 			send(iter->first, (const char*)&user_packet, user_packet.header.wLen, 0);
 		}
+
+		Sleep(500);
+
+		//카드 순서 전달
+		PACKET_CARD_DATA card_packet;
+		card_packet.header.wIndex = PACKET_INDEX_CARD_DATA;
+		card_packet.header.wLen = sizeof(PACKET_HEADER) + sizeof(INT) + sizeof(CARD_DATA) * g_mapUser.size();
+		card_packet.wCount = g_mapUser.size();
+
+		int k = 0;
+		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++, k++)
+		{
+			card_packet.data[k].iIndex = iter->second->index;
+			for (int j = 0; j < 20; j++)
+			{
+				card_packet.data[k].wArr[j] = iter->second->ranarr[j];
+				cout << card_packet.data[k].wArr[j] << " ";
+			}
+		}
+
+		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++, i++)
+		{
+			send(iter->first, (const char*)&card_packet, card_packet.header.wLen, 0);
+		}
+
 	}
 	break;
 	case FD_READ:
@@ -243,9 +312,9 @@ bool ProcessPacket(SOCKET sock , USER_INFO* pUser, char* szBuf, int& len)
 	if (pUser->len < header.wLen)
 		return false;
 
-	switch (header.wIndex)
+	switch (header.wIndex) // 헤더의 종류에 따라
 	{
-		case PACKET_INDEX_SEND_POS:
+		case PACKET_INDEX_SEND_POS: //위치 정보를 보낸다
 		{
 			PACKET_SEND_POS packet;
 			memcpy(&packet, szBuf, header.wLen);
