@@ -1,7 +1,11 @@
-#pragma comment(lib,"ws2_32")
 #include <WinSock2.h>
+#include <Windows.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <process.h>
+#include "PACKET_HEADER_CATCH_MIND.h"
+
+//소켓프로그래밍책 기준.
 
 #define SERVERPORT 9000
 #define BUFSIZE 512
@@ -16,9 +20,22 @@ struct SOCKETINFO
 	WSABUF wsabuf;
 };
 
+uintptr_t _beginthreadex(
+	void *security,
+	unsigned stack_size,
+	DWORD WINAPI(LPVOID arg),
+	void *arglist,
+	unsigned initflag,
+	unsigned *thrdaddr
+);
+
+void _endthreadex(unsigned retval);
+
+
 DWORD WINAPI WorkerThread(LPVOID arg);
-void err_quit(char *msg);
-void err_display(char *msg);
+void err_quit(const char *msg);
+void err_display(const char *szMsg);
+
 
 int main(int argc, char *argv[])
 {
@@ -32,15 +49,17 @@ int main(int argc, char *argv[])
 	}
 
 	HANDLE hcp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+
 	if (hcp == NULL) return 1;
 
 	SYSTEM_INFO si;
 	GetSystemInfo(&si);
 
 	HANDLE hThread;
+
 	for (int i = 0; i < (int)si.dwNumberOfProcessors * 2; i++)
 	{
-		hThread = CreateThread(NULL, 0, WorkerThread, hcp, 0, NULL);
+		hThread = (HANDLE)_beginthreadex(NULL, 0, WorkerThread, hcp, 0, NULL);
 		if (hThread == NULL) return 1;
 		CloseHandle(hThread);
 	}
@@ -231,13 +250,12 @@ void err_quit(const char *msg)
 	exit(1);
 }
 
-void err_display(const char *msg)
+
+void err_display(const char* szMsg)
 {
 	LPVOID lpMsgBuf;
-	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
-		NULL, WSAGetLastError(),
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPTSTR)&lpMsgBuf, 0, NULL);
-	printf("[%s] %s", msg, (char*)lpMsgBuf);
+	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM, NULL, WSAGetLastError(),
+		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&lpMsgBuf, 0, NULL);
+	printf("[%s]%s\n", szMsg, lpMsgBuf);
 	LocalFree(lpMsgBuf);
 }

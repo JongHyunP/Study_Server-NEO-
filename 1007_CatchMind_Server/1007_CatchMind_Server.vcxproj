@@ -20,9 +20,9 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>15.0</VCProjectVersion>
-    <ProjectGuid>{464A65A2-397E-49BA-A408-563DB2A27898}</ProjectGuid>
+    <ProjectGuid>{BC65D11E-BBD5-47B2-88EF-784480433448}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>My1004CompletionPortModel</RootNamespace>
+    <RootNamespace>My1007CatchMindServer</RootNamespace>
     <WindowsTargetPlatformVersion>10.0.17763.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -87,7 +87,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
+      <ConformanceMode>false</ConformanceMode>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -141,9 +141,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="CompletionPort_Model.cpp" />
+    <ClCompile Include="IOCompletionPort.cpp" />
+    <ClCompile Include="StdAfx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="PACKET_HEADER_CATCH_MIND.h" />
+    <ClInclude Include="Common\PACKET_HEADER_CATCH_MIND.h" />
+    <ClInclude Include="IOCompletionPort.h" />
+    <ClInclude Include="StdAfx.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
