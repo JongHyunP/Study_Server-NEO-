@@ -7,7 +7,6 @@ enum PACKET_INDEX
 	PACKET_INDEX_LOGIN_RET = 1,
 	PACKET_INDEX_USER_DATA,
 	PACKET_INDEX_SEND_POS,
-	PACKET_INDEX_SEND_CARDINFO
 };
 
 struct PACKET_HEADER
@@ -25,7 +24,7 @@ struct USER_DATA
 
 struct CARD_DATA
 {
-	int iIndex;
+
 };
 
 struct PACKET_LOGIN_RET
@@ -49,8 +48,7 @@ struct PACKET_SEND_POS
 
 struct PACKET_SEND_CARDINFO
 {
-	PACKET_HEADER header;
-	CARD_DATA data;
+
 };
 
 
