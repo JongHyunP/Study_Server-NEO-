@@ -1,3 +1,4 @@
+#pragma once
 #include "IOCompletionPort.h"
 #include "StdAfx.h"
 
@@ -158,11 +159,11 @@ bool IOCompletionPort::CreateWorkerThread()
 	GetSystemInfo(&sysInfo);
 	printf_s("[INFO]CPU 갯수 : %d \n",sysInfo.dwNumberOfProcessors); 
 
-	//작업 스레드 갯수(cpu갯수*2 개)
-	int nThreadCnt = sysInfo.dwNumberOfProcessors * 2;
+	//작업 스레드 갯수 (cpu 개수*2 개)+1
+	int nThreadCnt = (sysInfo.dwNumberOfProcessors * 2) + 1;
 
 	//thread handler 선언
-	m_bWorkerThread = new HANDLE[nThreadCnt];
+	m_pWorkerHandle = new HANDLE[nThreadCnt];
 	
 	//thread 생성
 	for (int i = 0; i < nThreadCnt; i++)
@@ -208,7 +209,79 @@ void IOCompletionPort::WorkerThread()
 	{
 		// 이 함수로 인해 스레드들은 WaitingThread Queue 에 대기상태로 들어가게 됨.
 		// 완료된 Overlapped I/O 작업이 발생하면 IOCP Queue 에서 완료된 작업을 가져와서 뒤처리를 함.
+		bResult = GetQueuedCompletionStatus(m_hIOCP,
+			&recvBytes,							//실제로 전송된 바이트
+			(LPDWORD)&pCompletionKey,			//completion Key
+			(LPOVERLAPPED*)&pSocketInfo,		//overlapped I/O 객체
+			INFINITE							//대기 할 시간
+			);
 
+		if (!bResult && recvBytes == 0)
+		{
+			printf_s("[INFO] socket(%d) 접속 끊김 \n", pSocketInfo->socket);
+			closesocket(pSocketInfo->socket);
+			free(pSocketInfo);
+			continue;
+		}
+		//안 끊겼다면 소켓의 버퍼 길이 = 받은 데이터 길이
+		pSocketInfo->dataBuf.len = recvBytes;
+
+		if (recvBytes == 0)
+		{
+			closesocket(pSocketInfo->socket);
+			free(pSocketInfo);
+			continue;
+		}
+		else
+		{
+			printf_s("[INFO] 메시지 수신 - bytes : [%d], Msg : [%s] \n",
+				pSocketInfo->dataBuf.len, pSocketInfo->dataBuf.buf);
+
+			//클라이언트의 응답을 그대로 송신
+			nResult = WSASend(
+				pSocketInfo->socket,
+				&(pSocketInfo->dataBuf),
+				1,
+				&sendBytes,
+				dwFlags,
+				NULL,
+				NULL
+			);
+
+			if (nResult == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING)
+			{
+				printf_s("[에러] WSASend 실패 : %d \n", WSAGetLastError());
+			}
+
+			printf_s("[INFO] 메시지 송신 - bytes : [%d], Msg : [%s] \n",
+				pSocketInfo->dataBuf.len, pSocketInfo->dataBuf.buf);
+
+			//stSOCKETINFO 데이터 초기화
+			ZeroMemory(&(pSocketInfo->overlapped), sizeof(OVERLAPPED));
+			pSocketInfo->dataBuf.len = MAX_BUFFER;
+			pSocketInfo->dataBuf.buf = pSocketInfo->messageBuffer;
+			ZeroMemory(pSocketInfo->messageBuffer, MAX_BUFFER);
+			pSocketInfo->recvBytes = 0;
+			pSocketInfo->sendBytes = 0;
+
+			dwFlags = 0;
+
+			// 클라이언트로부터 다시 응답 받기위해 WSARecv를 호출해줌.
+			nResult = WSARecv(
+				pSocketInfo->socket,
+				&(pSocketInfo->dataBuf),
+				1,
+				&recvBytes,
+				&dwFlags,
+				(LPWSAOVERLAPPED)&(pSocketInfo->overlapped),
+				NULL
+			);
+
+			if (nResult == SOCKET_ERROR && WSAGetLastError() != WSA_IO_PENDING)
+			{
+				printf_s("[에러] WSARecv 실패 : %d \n ", WSAGetLastError());
+			}
+		}
 	}
 
 }
