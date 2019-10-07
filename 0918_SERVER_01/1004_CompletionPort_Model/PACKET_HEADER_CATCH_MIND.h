@@ -40,7 +40,7 @@ struct PACKET_USER_DATA
 {
 	PACKET_HEADER header;
 	WORD wCount;
-	USER_DATA data[20]; 
+	USER_DATA data[20];
 };
 
 struct PACKET_CARD_DATA

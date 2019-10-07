@@ -1,13 +1,8 @@
-#include <WinSock2.h>
-#include <Windows.h>
-#include <iostream>
-#include <map>
-#include <list>
-#include "..\..\Common\PACKET_HEADER.h"
-using namespace std;
+// Server.cpp : Defines the entry point for the console application.
+//
+#include "StdAfx.h"
 
-#define BUFSIZE 512
-#define WM_SOCKET (WM_USER+1)
+
 
 class USER_INFO
 {
@@ -23,32 +18,34 @@ public:
 int g_iIndex = 0;
 map<SOCKET, USER_INFO*> g_mapUser;
 
-class CARD_INFO
-{
-public:
-	int m_targetUserIndex; //어느 유저한테 뿌릴건지
-	int m_randomCardArray[20]; //카드 셔플용 배열
-	int len; //길이
-};
-
-class LOBBY
-{
-public:
-	list<USER_INFO*> m_UserList;
-};
-
-
-
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 void ProcessSocketMessage(HWND, UINT, WPARAM, LPARAM);
-bool ProcessPacket(SOCKET sock , USER_INFO* pUser, char* szBuf, int& len);
-
+bool ProcessPacket(SOCKET sock, USER_INFO* pUser, char* szBuf, int& len);
 void err_display(int errcode);
 void err_display(char* szMsg);
+//////////////////////////////////////////////////////////////////////////
+//	함수 원형 선언
+
+UINT WINAPI CompletionThread(LPVOID pCompletionPortIO);
+
+
+//////////////////////////////////////////////////////////////////////////
+//	main() 함수 구현
 
 int main(int argc, char* argv[])
 {
-	int retval;
+	WSADATA wsaData;
+	HANDLE  hCompletionPort;
+
+	SYSTEM_INFO systemInfo;
+	SOCKADDR_IN servAddr;
+
+	LPPER_IO_DATA     perIoData;
+	LPPER_HANDLE_DATA perHandleData;
+
+	SOCKET hServSock;
+	DWORD  dwRecvBytes;
+	DWORD  i, dwFlags;
 
 	WNDCLASS WndClass;
 
@@ -70,53 +67,89 @@ int main(int argc, char* argv[])
 	ShowWindow(hWnd, SW_SHOWNORMAL);
 	UpdateWindow(hWnd);
 
-	WSADATA wsa;
-	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
-		return -1;
+	//if (argc != 2)
+	//{
+	//	printf("Usage : %s <port>\n", argv[0]);
+	//	exit(1);
+	//}
 
-	SOCKET listen_sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (listen_sock == INVALID_SOCKET)
-	{
-		cout << "err on socket" << endl;
-		return -1;
+	if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0)
+	{	// Load Winsock 2.2 DLL
+		ErrorHandling("WSAStartup() error!");
 	}
 
-	retval = WSAAsyncSelect(listen_sock, hWnd, WM_SOCKET, FD_ACCEPT | FD_CLOSE);
-	if (retval == SOCKET_ERROR)
+	// 1. Completion Port 생성
+	hCompletionPort = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+	GetSystemInfo(&systemInfo);
+
+	// 2. 쓰레드를 CPU 개수만큼 생성
+	for (i = 0; i < systemInfo.dwNumberOfProcessors; i++)
 	{
-		cout << "err on WSAAsyncSelect" << endl;
-		return -1;
+		_beginthreadex(NULL, 0, CompletionThread, (LPVOID)hCompletionPort, 0, NULL);
 	}
 
-	//bind
-	SOCKADDR_IN serveraddr;
-	ZeroMemory(&serveraddr, sizeof(serveraddr));
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_port = htons(9000);
-	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	retval = bind(listen_sock, (SOCKADDR*)&serveraddr, sizeof(serveraddr));
-	if (retval == SOCKET_ERROR)
+	hServSock = WSASocket(PF_INET, SOCK_STREAM, 0, NULL, 0, WSA_FLAG_OVERLAPPED);
+	if (hServSock == INVALID_SOCKET)
 	{
-		cout << "err on bind" << endl;
-		return -1;
+		ErrorHandling("WSASocket() error!");
 	}
 
-	//listen
-	retval = listen(listen_sock, SOMAXCONN);
-	if (retval == SOCKET_ERROR)
+	memset(&servAddr, 0, sizeof(servAddr));
+	servAddr.sin_family = AF_INET;
+	servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	servAddr.sin_port = htons(atoi(argv[1]));
+
+	if (bind(hServSock, (SOCKADDR *)&servAddr, sizeof(servAddr))
+		== SOCKET_ERROR)
 	{
-		cout << "err on listen" << endl;
-		return -1;
+		ErrorHandling("bind() error!");
 	}
 
-	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0))
+	if (listen(hServSock, 5) == SOCKET_ERROR)
 	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		ErrorHandling("listen() error!");
 	}
 
-	return msg.wParam;
+	while (TRUE)
+	{
+		SOCKET      hClntSock;
+		SOCKADDR_IN clntAddr;
+		int         nAddrLen = sizeof(clntAddr);
+
+		hClntSock = accept(hServSock, (SOCKADDR *)&clntAddr,
+			&nAddrLen);
+		if (hClntSock == INVALID_SOCKET)
+		{
+			ErrorHandling("accept() error!");
+		}
+
+		// 연결된 클라이언트의 소켓 핸들 정보와 주소 정보를 설정
+		perHandleData = new PER_HANDLE_DATA;
+		perHandleData->hClntSock = hClntSock;
+		memcpy(&(perHandleData->clntAddr), &clntAddr, nAddrLen);
+
+		// 3. Overlapped 소켓과 Completion Port 의 연결
+		CreateIoCompletionPort((HANDLE)hClntSock, hCompletionPort, (DWORD)perHandleData, 0);
+
+		// 클라이언트를 위한 버퍼를 설정, OVERLAPPED 변수 초기화
+		perIoData = new PER_IO_DATA;
+		memset(&(perIoData->overlapped), 0, sizeof(OVERLAPPED));
+		perIoData->wsaBuf.len = BUFSIZE;
+		perIoData->wsaBuf.buf = perIoData->buffer;
+		dwFlags = 0;
+
+		// 4. 중첩된 데이타 입력
+		WSARecv(perHandleData->hClntSock,		// 데이타 입력 소켓
+			&(perIoData->wsaBuf),				// 데이타 입력 버퍼 포인터
+			1,									// 데이타 입력 버퍼의 수
+			&dwRecvBytes,
+			&dwFlags,
+			&(perIoData->overlapped),			// OVERLAPPED 변수 포인터
+			NULL
+		);
+	}
+
+	return 0;
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -132,6 +165,60 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 
 	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+}
+
+//////////////////////////////////////////////////////////////////////////
+//	CompletionThread() 함수 구현
+
+UINT WINAPI CompletionThread(LPVOID pCompletionPortIO)
+{
+	HANDLE hCompletionPort = (HANDLE)pCompletionPortIO;
+	DWORD  dwBytesTransferred;
+	LPPER_HANDLE_DATA perHandleData;
+	LPPER_IO_DATA     perIoData;
+	DWORD  dwFlags;
+
+	while (TRUE)
+	{
+		// 5. 입.출력이 완료된 소켓의 정보 얻음
+		GetQueuedCompletionStatus(hCompletionPort,		// Completion Port
+			&dwBytesTransferred,						// 전송된 바이트 수
+			(LPDWORD)&perHandleData,
+			(LPOVERLAPPED *)&perIoData,
+			INFINITE
+		);
+
+		if (dwBytesTransferred == 0)		// EOF 전송 시 
+		{
+			closesocket(perHandleData->hClntSock);
+			printf("[TCP서버] 클라이언트 종료 : IP 주소 = %s , 포트번호 = %d \n", inet_ntoa(perHandleData->clntAddr.sin_addr), ntohs(perHandleData->clntAddr.sin_port));
+			delete perHandleData;
+			delete perIoData;
+
+			continue;
+		}
+
+		// 6. 메세지. 클라이언트로 에코
+		perIoData->wsaBuf.len = dwBytesTransferred;
+		WSASend(perHandleData->hClntSock, &(perIoData->wsaBuf), 1, NULL, 0, NULL, NULL);
+
+		// RECEIVE AGAIN
+		memset(&(perIoData->overlapped), 0, sizeof(OVERLAPPED));
+		perIoData->wsaBuf.len = BUFSIZE;
+		perIoData->wsaBuf.buf = perIoData->buffer;
+
+		dwFlags = 0;
+		WSARecv(perHandleData->hClntSock,
+			&(perIoData->wsaBuf),
+			1,
+			NULL,
+			&dwFlags,
+			&(perIoData->overlapped),
+			NULL
+		);
+	}
+
+	return 0;
 }
 
 void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
@@ -193,10 +280,10 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			pInfo->ranarr[randB] = iTemp;
 		}
 
-		g_mapUser.insert(make_pair(client_sock , pInfo)); // 유저 추가
-		
+		g_mapUser.insert(make_pair(client_sock, pInfo)); // 유저 추가
+
 		for (int i = 0; i < 20; i++)
-		cout<<pInfo->ranarr[i]<<" ";
+			cout << pInfo->ranarr[i] << " ";
 
 		cout << endl;
 
@@ -213,7 +300,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		user_packet.header.wLen = sizeof(PACKET_HEADER) + sizeof(WORD) + sizeof(INT) + sizeof(USER_DATA) * g_mapUser.size();
 		user_packet.wCount = g_mapUser.size();
 		int i = 0;
-		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++ , i++)
+		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++, i++)
 		{
 			user_packet.data[i].iIndex = iter->second->index;
 			user_packet.data[i].wX = iter->second->x;
@@ -221,7 +308,7 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			for (int j = 0; j < 20; j++)
 			{
 				user_packet.data[i].wArr[j] = iter->second->ranarr[j];
-			//	cout << user_packet.data[i].wArr[j] << " ";
+				//	cout << user_packet.data[i].wArr[j] << " ";
 			}
 		}
 
@@ -257,44 +344,43 @@ void ProcessSocketMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	}
 	break;
 	case FD_READ:
+	{
+		char szBuf[BUFSIZE];
+
+		retval = recv(wParam, szBuf, BUFSIZE, 0);
+		if (retval == SOCKET_ERROR)
 		{
-			char szBuf[BUFSIZE];
-
-			retval = recv(wParam, szBuf, BUFSIZE , 0);
-			if (retval == SOCKET_ERROR)
+			if (WSAGetLastError() != WSAEWOULDBLOCK)
 			{
-				if (WSAGetLastError() != WSAEWOULDBLOCK)
-				{
-					cout << "err on recv!!" << endl;
-				}
+				cout << "err on recv!!" << endl;
 			}
-
-			USER_INFO* pUser = g_mapUser[wParam];
-
-			while (true)
-			{
-				if (!ProcessPacket(wParam , pUser, szBuf, retval))
-				{
-					Sleep(100);
-					//SendMessage(hWnd, uMsg, wParam, lParam);
-					break;
-				}
-				else
-				{
-					if (pUser->len < sizeof(PACKET_HEADER))
-						break;
-				}
-			}
-			
 		}
-		break;
+
+		USER_INFO* pUser = g_mapUser[wParam];
+
+		while (true)
+		{
+			if (!ProcessPacket(wParam, pUser, szBuf, retval))
+			{
+				Sleep(100);
+				//SendMessage(hWnd, uMsg, wParam, lParam);
+				break;
+			}
+			else
+			{
+				if (pUser->len < sizeof(PACKET_HEADER))
+					break;
+			}
+		}
+
+	}
+	break;
 	case FD_CLOSE:
 		closesocket(wParam);
 		break;
 	}
 }
-
-bool ProcessPacket(SOCKET sock , USER_INFO* pUser, char* szBuf, int& len)
+bool ProcessPacket(SOCKET sock, USER_INFO* pUser, char* szBuf, int& len)
 {
 	if (len > 0)
 	{
@@ -314,26 +400,26 @@ bool ProcessPacket(SOCKET sock , USER_INFO* pUser, char* szBuf, int& len)
 
 	switch (header.wIndex) // 헤더의 종류에 따라
 	{
-		case PACKET_INDEX_SEND_POS: //위치 정보를 보낸다
+	case PACKET_INDEX_SEND_POS: //위치 정보를 보낸다
+	{
+		PACKET_SEND_POS packet;
+		memcpy(&packet, szBuf, header.wLen);
+
+		g_mapUser[sock]->x = packet.data.wX;
+		g_mapUser[sock]->y = packet.data.wY;
+
+		for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++)
 		{
-			PACKET_SEND_POS packet;
-			memcpy(&packet, szBuf, header.wLen);
+			//if (iter->first == sock)
+				//continue;
 
-			g_mapUser[sock]->x = packet.data.wX;
-			g_mapUser[sock]->y = packet.data.wY;
-
-			for (auto iter = g_mapUser.begin(); iter != g_mapUser.end(); iter++)
-			{
-				//if (iter->first == sock)
-					//continue;
-
-				send(iter->first, (const char*)&packet, header.wLen, 0);
-			}
+			send(iter->first, (const char*)&packet, header.wLen, 0);
 		}
+	}
 	break;
 	}
 
-	memcpy(&pUser->szBuf , &pUser->szBuf[header.wLen], pUser->len - header.wLen);
+	memcpy(&pUser->szBuf, &pUser->szBuf[header.wLen], pUser->len - header.wLen);
 	pUser->len -= header.wLen;
 
 	return true;
