@@ -13,6 +13,7 @@ unsigned int WINAPI CallWorkerThread(LPVOID p)
 
 IOCompletionPort::IOCompletionPort()
 {
+	m_iIndex = 0;
 	m_bWorkerThread = true;
 	m_bAccept = true;
 }
@@ -148,6 +149,9 @@ void IOCompletionPort::StartServer()
 			printf_s("[에러] IO Pending 실패 : %d \n", WSAGetLastError());
 			return;
 		}
+
+		printf_s("[클라이언트 접속] ip 주소 = %s 포트번호 = %d \n", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
+
 	}
 }
 
@@ -254,7 +258,7 @@ void IOCompletionPort::WorkerThread()
 			}
 
 			printf_s("[INFO] 메시지 송신 - bytes : [%d], Msg : [%s] \n",
-				pSocketInfo->dataBuf.len, pSocketInfo->dataBuf.buf);
+				 pSocketInfo->dataBuf.len, pSocketInfo->dataBuf.buf);
 
 			//stSOCKETINFO 데이터 초기화
 			ZeroMemory(&(pSocketInfo->overlapped), sizeof(OVERLAPPED));

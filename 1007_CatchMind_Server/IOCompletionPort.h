@@ -14,6 +14,13 @@ struct stSOKETINFO
 	int				sendBytes;
 };
 
+class USER_INFO
+{
+public:
+	int index;
+	int len;
+};
+
 class IOCompletionPort
 {
 public:
@@ -40,6 +47,10 @@ private:
 	bool				m_bAccept;		 // 요청 동작 플래그
 	bool				m_bWorkerThread; // 작업 스레드 동작 플래그
 	HANDLE*				m_pWorkerHandle; // 작업 스레드 핸들
+private:
+	//나중에 객체화 분리 예정
+	int				    	m_iIndex; // 유저 인덱스용
+	
 
 };
 
