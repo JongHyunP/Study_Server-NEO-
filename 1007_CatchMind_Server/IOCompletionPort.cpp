@@ -124,6 +124,7 @@ void IOCompletionPort::StartServer()
 			printf_s("[에러] Accept 실패 \n");
 			return;
 		}
+		printf_s("[클라이언트 접속] ip 주소 = %s 포트번호 = %d \n", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
 
 		m_pSoketInfo = new stSOKETINFO();
 		m_pSoketInfo->socket = clientSocket;
@@ -149,8 +150,6 @@ void IOCompletionPort::StartServer()
 			printf_s("[에러] IO Pending 실패 : %d \n", WSAGetLastError());
 			return;
 		}
-
-		printf_s("[클라이언트 접속] ip 주소 = %s 포트번호 = %d \n", inet_ntoa(clientAddr.sin_addr), ntohs(clientAddr.sin_port));
 
 	}
 }
@@ -227,7 +226,7 @@ void IOCompletionPort::WorkerThread()
 			free(pSocketInfo);
 			continue;
 		}
-		//안 끊겼다면 소켓의 버퍼 길이 = 받은 데이터 길이
+		
 		pSocketInfo->dataBuf.len = recvBytes;
 
 		if (recvBytes == 0)
@@ -264,6 +263,7 @@ void IOCompletionPort::WorkerThread()
 			ZeroMemory(&(pSocketInfo->overlapped), sizeof(OVERLAPPED));
 			pSocketInfo->dataBuf.len = MAX_BUFFER;
 			pSocketInfo->dataBuf.buf = pSocketInfo->messageBuffer;
+
 			ZeroMemory(pSocketInfo->messageBuffer, MAX_BUFFER);
 			pSocketInfo->recvBytes = 0;
 			pSocketInfo->sendBytes = 0;
