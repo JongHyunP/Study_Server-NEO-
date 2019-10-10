@@ -31,9 +31,15 @@ struct LOGIN_DATA
 
 };
 
+struct LOBBY_DATA
+{
+	int iIndex;
+	int iRoom[20];
+};
+
 struct PACKET_LOGIN_RET
 {
-	PACKET_HEADER header;
+	PACKET_HEADER header;	
 	int iIndex;
 };
 
@@ -55,6 +61,12 @@ struct PACKET_SEND_LOGIN
 {
 	PACKET_HEADER header;
 	LOGIN_DATA data;
+};
+
+struct PACKET_SEND_LOBBY //로비 데이터용
+{
+	PACKET_HEADER header;
+	LOBBY_DATA data;
 };
 
 
